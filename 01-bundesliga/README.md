@@ -13,6 +13,10 @@ homeassistant:
   packages: !include_dir_named packages
 ```
 
+**Vorher prüfen:**
+- Steht in deiner `configuration.yaml` schon eine Zeile mit `packages:`? Dann nichts neu eintragen, sondern `bundesliga.yaml` in den dort angegebenen Ordner legen.
+- Gibt es schon einen Block `homeassistant:`? Dann nur die Zeile `packages: …` darunter einfügen, zwei Leerzeichen eingerückt. `homeassistant:` darf nur einmal in der Datei stehen.
+
 ## Dateien
 
 | Datei | Wohin | Wofür |
@@ -23,7 +27,7 @@ homeassistant:
 
 ## Einbau in 4 Schritten
 
-1. `bundesliga.yaml` nach `/config/packages/` kopieren.
+1. Im File Editor den Ordner `packages` anlegen (falls noch nicht vorhanden), darin „New File“ → `bundesliga.yaml` und den Inhalt einfügen.
 2. Entwicklerwerkzeuge → YAML → „Konfiguration prüfen“ → Home Assistant neu starten.
 3. Unter Entwicklerwerkzeuge → Zustände nach `bundesliga` suchen. Es sollten u. a. `sensor.bundesliga_aktueller_spieltag`, `sensor.bundesliga_spieltagsdaten` und `sensor.bundesliga_tabellendaten` erscheinen.
 4. Dashboard bearbeiten → Karte hinzufügen → Manuell → Inhalt der beiden Karten-Dateien einfügen.
