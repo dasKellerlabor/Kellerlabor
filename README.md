@@ -1,4 +1,4 @@
-# Kellerlabor – Neugierig unter Strom
+# Kellerlabor – Neugier unter Strom
 
 Bauen, Lernen, Wissen teilen.
 
