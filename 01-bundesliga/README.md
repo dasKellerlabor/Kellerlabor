@@ -1,4 +1,4 @@
-# Versuch 01 – Bundesliga live in Home Assistant
+# Projekt 01 – Bundesliga live in Home Assistant
 
 Live-Ergebnisse und Tabelle der 1. Bundesliga als Dashboard in Home Assistant. Kostenlos, ohne API-Schlüssel. Daten: [OpenLigaDB](https://www.openligadb.de).
 
