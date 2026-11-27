@@ -1,0 +1,264 @@
+# =====================================================================
+#  packages/bundesliga.yaml – 1. Bundesliga: Spieltag + Tabelle (OpenLigaDB)
+#  Voraussetzung in configuration.yaml:
+#    homeassistant:
+#      packages: !include_dir_named packages
+# =====================================================================
+
+sensor:
+  # Spieltag laut OpenLigaDB (nur Ausgangswert; welcher Spieltag angezeigt
+  # wird, entscheidet "Bundesliga angezeigter Spieltag" weiter unten)
+  - platform: rest
+    name: Bundesliga aktueller Spieltag
+    unique_id: bundesliga_aktueller_spieltag
+    icon: mdi:soccer-field
+    resource: "https://api.openligadb.de/getcurrentgroup/bl1"
+    scan_interval: 3600
+    value_template: "{{ value_json.groupOrderID }}"
+
+template:
+  # 1) Welcher Spieltag wird angezeigt?
+  #    Regel: Ein Spieltag bleibt bis 23:59 Uhr am Tag seines letzten
+  #    regulären Spiels stehen, um 00:00 Uhr folgt der nächste.
+  #    Nachholspiele (mehr als 7 Tage nach dem ersten Spiel des Spieltags)
+  #    zählen nicht. Geprüft werden Spieltag laut OpenLigaDB sowie der
+  #    vorherige und der nächste – unabhängig davon, wann OpenLigaDB umschaltet.
+  - triggers:
+      - trigger: time_pattern
+        minutes: 0
+      - trigger: time
+        at: "00:00:30"
+      - trigger: state
+        entity_id: sensor.bundesliga_aktueller_spieltag
+      - trigger: homeassistant
+        event: start
+      - trigger: event
+        event_type: event_template_reloaded
+    actions:
+      - variables:
+          g: "{{ states('sensor.bundesliga_aktueller_spieltag') | int(0) }}"
+      - action: rest_command.bundesliga_spieltag_abrufen
+        continue_on_error: true
+        data:
+          spieltag: "{{ [g - 1, 1] | max }}"
+        response_variable: res_vor
+      - action: rest_command.bundesliga_spieltag_abrufen
+        continue_on_error: true
+        data:
+          spieltag: "{{ g }}"
+        response_variable: res_akt
+      - action: rest_command.bundesliga_spieltag_abrufen
+        continue_on_error: true
+        data:
+          spieltag: "{{ [g + 1, 34] | min }}"
+        response_variable: res_nach
+    sensor:
+      - name: Bundesliga angezeigter Spieltag
+        unique_id: bundesliga_angezeigter_spieltag
+        icon: mdi:calendar-range
+        availability: "{{ g > 0 }}"
+        state: >-
+          {% set heute = now().strftime('%Y-%m-%d') %}
+          {% set kandidaten = [
+            ([g - 1, 1] | max, res_vor if res_vor is defined else none),
+            (g, res_akt if res_akt is defined else none),
+            ([g + 1, 34] | min, res_nach if res_nach is defined else none)
+          ] %}
+          {% set ns = namespace(wahl=0, letzter='') %}
+          {% for nr, r in kandidaten %}
+            {% if ns.wahl == 0 and r is not none and r.status == 200
+                  and r.content | count > 0 %}
+              {% set erster = r.content | map(attribute='matchDateTimeUTC') | map('as_timestamp') | min %}
+              {% set ns.letzter = '' %}
+              {% for m in r.content %}
+                {% if as_timestamp(m.matchDateTimeUTC) <= erster + 604800
+                      and m.matchDateTime[:10] > ns.letzter %}
+                  {% set ns.letzter = m.matchDateTime[:10] %}
+                {% endif %}
+              {% endfor %}
+              {% if ns.letzter >= heute %}
+                {% set ns.wahl = nr %}
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.wahl if ns.wahl > 0 else g }}
+
+  # 2) Spiele des angezeigten Spieltags, aufbereitet für die Dashboard-Karte
+  #    (Trennzeilen pro Tag, Endergebnis statt Halbzeitstand, Live-Stand).
+  #    Takt: alle 30 s, solange ein Spiel läuft (2 min vor Anstoß bis Abpfiff,
+  #    höchstens 3 h nach Anstoß), sonst stündlich und beim Spieltagswechsel.
+  - triggers:
+      - trigger: time_pattern
+        seconds: "/30"
+        id: takt
+      - trigger: time_pattern
+        minutes: 0
+        id: routine
+      - trigger: state
+        entity_id: sensor.bundesliga_angezeigter_spieltag
+        id: wechsel
+      - trigger: homeassistant
+        event: start
+        id: start
+      - trigger: event
+        event_type: event_template_reloaded
+        id: start
+    conditions:
+      - condition: template
+        value_template: >-
+          {% if trigger.id != 'takt' %}
+            true
+          {% else %}
+            {% set t = now().timestamp() %}
+            {% set z = state_attr('sensor.bundesliga_spieltagsdaten', 'zeilen') or [] %}
+            {{ z | selectattr('typ', 'eq', 'spiel')
+                 | rejectattr('beendet')
+                 | map(attribute='anstoss_ts')
+                 | select('le', t + 120)
+                 | select('ge', t - 10800)
+                 | list | count > 0 }}
+          {% endif %}
+    actions:
+      - variables:
+          spieltag: >-
+            {% set a = states('sensor.bundesliga_angezeigter_spieltag') %}
+            {{ a | int if is_number(a) else states('sensor.bundesliga_aktueller_spieltag') | int(0) }}
+      - action: rest_command.bundesliga_spieltag_abrufen
+        continue_on_error: true
+        data:
+          spieltag: "{{ spieltag }}"
+        response_variable: antwort
+    sensor:
+      - name: Bundesliga Spieltagsdaten
+        unique_id: bundesliga_spieltagsdaten
+        icon: mdi:soccer
+        state: "{{ spieltag }}"
+        attributes:
+          stand: >-
+            {% if antwort is defined and antwort.status == 200 %}
+              {{ now().strftime('%H:%M:%S') }}
+            {% else %}
+              {{ this.attributes.get('stand', '') }}
+            {% endif %}
+          zeilen: >-
+            {% if antwort is defined and antwort.status == 200
+                  and antwort.content | count > 0 %}
+              {% set tage = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'] %}
+              {# Ersatz-Logos für Vereine, deren OpenLigaDB-Logo nicht lädt (teamId: URL) #}
+              {% set logos = {
+                6: 'https://upload.wikimedia.org/wikipedia/en/5/59/Bayer_04_Leverkusen_logo.svg'
+              } %}
+              {% set t = now().timestamp() %}
+              {% set ns = namespace(z=[], tag='') %}
+              {% for m in antwort.content | sort(attribute='team1.teamName')
+                                          | sort(attribute='matchDateTimeUTC') %}
+                {% set datum = m.matchDateTime[:10] %}
+                {% if datum != ns.tag %}
+                  {% set ns.tag = datum %}
+                  {% set d = strptime(datum, '%Y-%m-%d') %}
+                  {% set ns.z = ns.z + [{
+                    'typ': 'tag',
+                    'titel': tage[d.weekday()] ~ '. ' ~ d.strftime('%d.%m')
+                  }] %}
+                {% endif %}
+                {% set ts = as_timestamp(m.matchDateTimeUTC) %}
+                {% if m.matchIsFinished %}
+                  {% set res = (m.matchResults | selectattr('resultTypeID', 'eq', 2) | list)
+                               or (m.matchResults | sort(attribute='resultOrderID', reverse=true) | list) %}
+                  {% set anzeige = (res[0].pointsTeam1 ~ ' : ' ~ res[0].pointsTeam2) if res else '–' %}
+                  {% set status = 'ende' %}
+                {% elif t >= ts %}
+                  {% set tore = m.goals | list %}
+                  {% set anzeige = (tore[-1].scoreTeam1 ~ ' : ' ~ tore[-1].scoreTeam2) if tore else '0 : 0' %}
+                  {% set status = 'live' %}
+                {% else %}
+                  {% set anzeige = m.matchDateTime[11:16] %}
+                  {% set status = 'geplant' %}
+                {% endif %}
+                {% set ns.z = ns.z + [{
+                  'typ': 'spiel',
+                  'heim': m.team1.teamName,
+                  'heim_logo': logos.get(m.team1.teamId, m.team1.teamIconUrl),
+                  'gast': m.team2.teamName,
+                  'gast_logo': logos.get(m.team2.teamId, m.team2.teamIconUrl),
+                  'anzeige': anzeige,
+                  'status': status,
+                  'anstoss_ts': ts,
+                  'beendet': m.matchIsFinished
+                }] %}
+              {% endfor %}
+              {{ ns.z }}
+            {% else %}
+              {{ this.attributes.get('zeilen', []) }}
+            {% endif %}
+
+  # 3) Tabelle (OpenLigaDB, gleiche Quelle wie der Spieltag)
+  #    Lädt neu, sobald sich auf der Spieltag-Karte ein Ergebnis/Status ändert
+  #    (sofort und nochmals 3 min später, falls OpenLigaDB die Tabelle
+  #    verzögert nachzieht), sonst stündlich.
+  - triggers:
+      - trigger: state
+        entity_id: sensor.bundesliga_spieltagsdaten
+        attribute: zeilen
+      - trigger: state
+        entity_id: sensor.bundesliga_spieltagsdaten
+        attribute: zeilen
+        for:
+          minutes: 3
+      - trigger: time_pattern
+        minutes: 5
+      - trigger: homeassistant
+        event: start
+      - trigger: event
+        event_type: event_template_reloaded
+    actions:
+      - action: rest_command.bundesliga_tabelle_abrufen
+        continue_on_error: true
+        response_variable: antwort
+    sensor:
+      - name: Bundesliga Tabellendaten
+        unique_id: bundesliga_tabellendaten_openligadb
+        icon: mdi:format-list-numbered
+        state: >-
+          {% if antwort is defined and antwort.status == 200 %}
+            {{ now().strftime('%H:%M') }}
+          {% else %}
+            {{ this.state }}
+          {% endif %}
+        attributes:
+          zeilen: >-
+            {% if antwort is defined and antwort.status == 200
+                  and antwort.content | count > 0 %}
+              {# Ersatz-Logos für Vereine, deren OpenLigaDB-Logo nicht lädt (teamInfoId: URL) #}
+              {% set logos = {
+                6: 'https://upload.wikimedia.org/wikipedia/en/5/59/Bayer_04_Leverkusen_logo.svg'
+              } %}
+              {% set ns = namespace(z=[]) %}
+              {% for t in antwort.content %}
+                {% set ns.z = ns.z + [{
+                  'platz': loop.index,
+                  'verein': t.shortName or t.teamName,
+                  'logo': logos.get(t.teamInfoId, t.teamIconUrl),
+                  'sp': t.matches,
+                  's': t.won,
+                  'u': t.draw,
+                  'n': t.lost,
+                  'tore': t.goals ~ ':' ~ t.opponentGoals,
+                  'diff': ('+' if t.goalDiff > 0 else '') ~ t.goalDiff,
+                  'pkt': t.points
+                }] %}
+              {% endfor %}
+              {{ ns.z }}
+            {% else %}
+              {{ this.attributes.get('zeilen', []) }}
+            {% endif %}
+
+rest_command:
+  # Saison wechselt automatisch zum 1. Juli
+  bundesliga_spieltag_abrufen:
+    url: "https://api.openligadb.de/getmatchdata/bl1/{{ now().year if now().month >= 7 else now().year - 1 }}/{{ spieltag }}"
+    method: GET
+
+  bundesliga_tabelle_abrufen:
+    url: "https://api.openligadb.de/getbltable/bl1/{{ now().year if now().month >= 7 else now().year - 1 }}"
+    method: GET

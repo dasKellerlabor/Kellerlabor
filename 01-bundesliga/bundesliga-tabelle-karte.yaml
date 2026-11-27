@@ -1,0 +1,66 @@
+type: vertical-stack
+cards:
+  - type: custom:flex-table-card
+    title: 1. Bundesliga
+    entities:
+      include: sensor.bundesliga_tabellendaten
+    strict: true
+    # Zonen nach Tabellenplatz (Zeile 1 = Platz 1)
+    css:
+      tbody tr:nth-child(-n+4): "background-color: rgba(67,160,71,0.22) !important;"
+      tbody tr:nth-child(5): "background-color: rgba(30,136,229,0.22) !important;"
+      tbody tr:nth-child(6): "background-color: rgba(0,188,212,0.20) !important;"
+      tbody tr:nth-child(16): "background-color: rgba(251,140,0,0.25) !important;"
+      tbody tr:nth-child(n+17): "background-color: rgba(229,57,53,0.22) !important;"
+    columns:
+      - name: "#"
+        data: zeilen
+        modify: x.platz
+        align: center
+      - name: ""
+        data: zeilen
+        modify: >-
+          '<img src="' + x.logo + '" onerror="this.style.visibility=\'hidden\'"'
+          + ' style="width:28px;height:28px;object-fit:contain;">'
+        align: center
+      - name: Verein
+        data: zeilen
+        modify: '''<span style="white-space:nowrap;">'' + x.verein + ''</span>'''
+        align: left
+      - name: Sp
+        data: zeilen
+        modify: x.sp
+        align: center
+      - name: S
+        data: zeilen
+        modify: x.s
+        align: center
+      - name: U
+        data: zeilen
+        modify: x.u
+        align: center
+      - name: "N"
+        data: zeilen
+        modify: x.n
+        align: center
+      - name: Tore
+        data: zeilen
+        modify: '''<span style="white-space:nowrap;">'' + x.tore + ''</span>'''
+        align: center
+      - name: Diff
+        data: zeilen
+        modify: x.diff
+        align: center
+      - name: Pkt
+        data: zeilen
+        modify: '''<b>'' + x.pkt + ''</b>'''
+        align: center
+
+  # Legende zu den Farbzonen
+  - type: markdown
+    content: >-
+      <font color="#43a047">■</font> Champions League&nbsp;&nbsp;
+      <font color="#1e88e5">■</font> Europa League&nbsp;&nbsp;
+      <font color="#00bcd4">■</font> Conference League (Quali)&nbsp;&nbsp;
+      <font color="#fb8c00">■</font> Relegation&nbsp;&nbsp;
+      <font color="#e53935">■</font> Abstieg
