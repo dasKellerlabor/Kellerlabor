@@ -2,11 +2,11 @@
 
 Bauen, Lernen, Wissen teilen.
 
-Hier liegen die Dateien zu den Videos vom YouTube-Kanal [Kellerlabor](https://www.youtube.com/@dasKellerlabor). Jeder „Versuch“ hat einen eigenen Ordner mit allem, was du zum Nachbauen brauchst, und einer Anleitung.
+Hier liegen die Dateien zu den Videos vom YouTube-Kanal [Kellerlabor](https://www.youtube.com/@dasKellerlabor). Jedes Projekt hat einen eigenen Ordner mit allem, was du zum Nachbauen brauchst, und einer Anleitung.
 
-So mach ich's – und warum. Es gibt fast immer mehrere Wege in Home Assistant und ESPHome. Hier zeige ich meinen und erkläre, warum ich mich so entschieden habe.
+Kein Profi. Einfach technikbegeistert. Ich zeig dir, wie ich's mache. Und warum. Es gibt fast immer mehrere Wege in Home Assistant und ESPHome. Hier zeige ich meinen und erkläre, warum ich mich so entschieden habe.
 
-## Versuche
+## Projekte
 
 | Nr | Thema | Ordner | Video |
 |---|---|---|---|
